@@ -6,9 +6,15 @@ app = Flask(__name__)
 
 # Get DATABASE_URL from Render environment variable
 DATABASE_URL = os.environ.get("DATABASE_URL")
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+
+if not DATABASE_URL:
+    raise ValueError("⚠️ DATABASE_URL is not set. Please check Render environment variables.")
+
+# Render sometimes gives postgres:// instead of postgresql:// → fix it
+if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Flask SQLAlchemy configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -34,13 +40,13 @@ def home():
 def products():
     products = Product.query.all()
     return render_template_string("""
-    <h1>Product List</h1>
-    <a href='/add_product'>Add Product</a>
-    <ul>
-    {% for product in products %}
-        <li>{{ product.name }} - Wholesale: {{ product.wholesale_price }} | Retail: {{ product.retail_price }}</li>
-    {% endfor %}
-    </ul>
+        <h1>Product List</h1>
+        <a href='/add_product'>Add Product</a>
+        <ul>
+        {% for product in products %}
+            <li>{{ product.name }} → Wholesale: {{ product.wholesale_price }} | Retail: {{ product.retail_price }}</li>
+        {% endfor %}
+        </ul>
     """, products=products)
 
 @app.route("/add_product", methods=["GET", "POST"])
@@ -54,14 +60,15 @@ def add_product():
         db.session.commit()
         return redirect("/products")
     return render_template_string("""
-    <h1>Add Product</h1>
-    <form method="post">
-        Name: <input type="text" name="name"><br>
-        Wholesale Price: <input type="number" step="0.01" name="wholesale"><br>
-        Retail Price: <input type="number" step="0.01" name="retail"><br>
-        <input type="submit" value="Add">
-    </form>
+        <h1>Add Product</h1>
+        <form method="post">
+            Name: <input type="text" name="name"><br>
+            Wholesale Price: <input type="text" name="wholesale"><br>
+            Retail Price: <input type="text" name="retail"><br>
+            <button type="submit">Add</button>
+        </form>
+        <a href="/products">Back to Products</a>
     """)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=5000)
