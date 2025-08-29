@@ -1,72 +1,67 @@
-from flask import Flask, render_template_string, request, redirect, url_for
+from flask import Flask, render_template_string, request, redirect
 from flask_sqlalchemy import SQLAlchemy
 import os
 
 app = Flask(__name__)
 
-# Use Render's DATABASE_URL if available, otherwise default to local SQLite
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///wa_flora_pos.db")
+# Get DATABASE_URL from Render environment variable
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# Product model
+# Database model
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    category = db.Column(db.String(100))
-    base_unit = db.Column(db.String(50))
-    retail_price = db.Column(db.Float)
-    wholesale_price = db.Column(db.Float)
-    stock = db.Column(db.Float, default=0)
+    name = db.Column(db.String(100), nullable=False)
+    wholesale_price = db.Column(db.Float, nullable=False)
+    retail_price = db.Column(db.Float, nullable=False)
 
-# Home
+# Create tables if they don’t exist
+with app.app_context():
+    db.create_all()
+
+# Routes
 @app.route("/")
 def home():
-    return "Wa Flora POS with PostgreSQL is running!"
+    return redirect("/products")
 
-# Example: add a product
+@app.route("/products")
+def products():
+    products = Product.query.all()
+    return render_template_string("""
+    <h1>Product List</h1>
+    <a href='/add_product'>Add Product</a>
+    <ul>
+    {% for product in products %}
+        <li>{{ product.name }} - Wholesale: {{ product.wholesale_price }} | Retail: {{ product.retail_price }}</li>
+    {% endfor %}
+    </ul>
+    """, products=products)
+
 @app.route("/add_product", methods=["GET", "POST"])
 def add_product():
     if request.method == "POST":
         name = request.form["name"]
-        category = request.form["category"]
-        base_unit = request.form["base_unit"]
-        retail_price = float(request.form["retail_price"])
-        wholesale_price = float(request.form["wholesale_price"])
-        stock = float(request.form["stock"])
-
-        new_product = Product(
-            name=name,
-            category=category,
-            base_unit=base_unit,
-            retail_price=retail_price,
-            wholesale_price=wholesale_price,
-            stock=stock
-        )
-        db.session.add(new_product)
+        wholesale = float(request.form["wholesale"])
+        retail = float(request.form["retail"])
+        product = Product(name=name, wholesale_price=wholesale, retail_price=retail)
+        db.session.add(product)
         db.session.commit()
-        return redirect(url_for("list_products"))
-
-    return '''
-        <form method="POST">
-            Name: <input type="text" name="name"><br>
-            Category: <input type="text" name="category"><br>
-            Unit: <input type="text" name="base_unit"><br>
-            Retail Price: <input type="number" step="0.01" name="retail_price"><br>
-            Wholesale Price: <input type="number" step="0.01" name="wholesale_price"><br>
-            Stock: <input type="number" step="0.01" name="stock"><br>
-            <input type="submit" value="Add Product">
-        </form>
-    '''
-
-# List products
-@app.route("/products")
-def list_products():
-    products = Product.query.all()
-    return "<br>".join([f"{p.name} - {p.stock} {p.base_unit}" for p in products])
+        return redirect("/products")
+    return render_template_string("""
+    <h1>Add Product</h1>
+    <form method="post">
+        Name: <input type="text" name="name"><br>
+        Wholesale Price: <input type="number" step="0.01" name="wholesale"><br>
+        Retail Price: <input type="number" step="0.01" name="retail"><br>
+        <input type="submit" value="Add">
+    </form>
+    """)
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    app.run()
+    app.run(host="0.0.0.0", port=10000)
